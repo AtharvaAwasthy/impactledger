@@ -27,7 +27,7 @@ The application combines a FastAPI backend with a React and TypeScript dashboard
 
 ## Dashboard Preview
 
-![ImpactLedger project transparency dashboard](screenshots/dashboard.png)
+![ImpactLedger dashboard](screenshots/dashboard.png)
 
 
 ## Technology Stack
