@@ -31,6 +31,20 @@ function money(amount: number) {
   }).format(amount / 100);
 }
 
+function budgetUtilization(spent: number, budget: number) {
+  if (budget <= 0) return 0;
+  return (spent / budget) * 100;
+}
+
+function budgetStatus(spent: number, budget: number) {
+  if (budget <= 0) return "No budget";
+  const percentage = budgetUtilization(spent, budget);
+
+  if (percentage >= 100) return "Budget exhausted";
+  if (percentage >= 80) return "Near budget limit";
+  return "On track";
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
 
@@ -218,20 +232,82 @@ const filteredAuditLogs =
         <p>No projects yet. Create one through the API documentation.</p>
       )}
 
+
       <section className="projects">
-        {projects.map((project) => (
-          <article className="project" key={project.project_id}>
-            <h3>{project.name}</h3>
-            <p>Budget: {money(project.budget_minor)}</p>
-            <p>Allocated: {money(project.allocated_minor)}</p>
-            <p>Spent: {money(project.spent_minor)}</p>
-            <p>
-              Remaining allocation:{" "}
-              {money(project.remaining_allocation_minor)}
-            </p>
-          </article>
-        ))}
+        {projects.map((project) => {
+          const utilization = budgetUtilization(
+            project.spent_minor,
+            project.budget_minor
+          );
+
+          const progressWidth = Math.min(100, Math.max(0, utilization));
+          const status = budgetStatus(
+            project.spent_minor,
+            project.budget_minor
+          );
+
+          const statusClass =
+            status === "Budget exhausted"
+              ? "budget-status exhausted"
+              : status === "Near budget limit"
+                ? "budget-status warning"
+                : "budget-status healthy";
+
+          return (
+            <article className="project" key={project.project_id}>
+              <div className="project-heading">
+                <h3>{project.name}</h3>
+                <span className={statusClass}>{status}</span>
+              </div>
+
+              <p>Budget: {money(project.budget_minor)}</p>
+              <p>Allocated: {money(project.allocated_minor)}</p>
+              <p>Spent: {money(project.spent_minor)}</p>
+              <p>
+                Remaining allocation:{" "}
+                {money(project.remaining_allocation_minor)}
+              </p>
+
+              <div className="budget-progress-heading">
+                <span>Budget utilization</span>
+                <strong>
+                  {project.budget_minor > 0
+                    ? `${utilization.toFixed(1)}%`
+                    : "N/A"}
+                </strong>
+              </div>
+
+              <div
+                className="budget-progress-track"
+                role="progressbar"
+                aria-label={`${project.name} budget utilization`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progressWidth}
+              >
+                <div
+                  className={`budget-progress-fill ${
+                    utilization >= 100
+                      ? "exhausted"
+                      : utilization >= 80
+                        ? "warning"
+                        : ""
+                  }`}
+                  style={{ width: `${progressWidth}%` }}
+                />
+              </div>
+
+              {utilization > 100 && (
+                <p className="budget-overrun">
+                  Spending exceeds the project budget by{" "}
+                  {money(project.spent_minor - project.budget_minor)}.
+                </p>
+              )}
+            </article>
+          );
+        })}
       </section>
+
 
       <section className="audit-section">
         <div className="audit-heading">
