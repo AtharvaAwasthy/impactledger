@@ -26,9 +26,7 @@ The application combines a FastAPI backend with a React and TypeScript dashboard
 - **Automated tests:** Test key API workflows and financial validation rules.
 
 ## Dashboard Preview
-
-![ImpactLedger dashboard](screenshots/dashboard.png)
-
+![ImpactLedger dashboard](https://raw.githubusercontent.com/AtharvaAwasthy/impactledger/main/screenshots/dashboard.png)
 
 ## Technology Stack
 
