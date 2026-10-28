@@ -25,6 +25,11 @@ The application combines a FastAPI backend with a React and TypeScript dashboard
 - **API documentation:** Explore request schemas and endpoints using Swagger UI.
 - **Automated tests:** Test key API workflows and financial validation rules.
 
+## Dashboard Preview
+
+![ImpactLedger project transparency dashboard](screenshots/dashboard.png)
+
+
 ## Technology Stack
 
 | Component | Technology |
