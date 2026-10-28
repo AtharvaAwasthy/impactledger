@@ -91,6 +91,7 @@ function readableDetails(details: string | null) {
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [selectedAction, setSelectedAction] = useState("all");
   const [error, setError] = useState("");
   const [auditError, setAuditError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -155,6 +156,17 @@ export default function App() {
       0
     ),
   };
+
+
+const actionTypes = Array.from(
+  new Set(auditLogs.map((log) => log.action))
+).sort();
+
+const filteredAuditLogs =
+  selectedAction === "all"
+    ? auditLogs
+    : auditLogs.filter((log) => log.action === selectedAction);
+
 
   return (
     <main className="dashboard">
@@ -228,17 +240,39 @@ export default function App() {
             <h2>Audit Trail</h2>
             <p>A chronological record of actions stored by the system.</p>
           </div>
-          <span className="audit-count">
-            {auditLogs.length} records loaded
-          </span>
+          
+          <div className="audit-controls">
+            <label htmlFor="audit-action-filter">Filter by action</label>
+            <select
+              id="audit-action-filter"
+              value={selectedAction}
+              onChange={(event) => setSelectedAction(event.target.value)}
+            >
+              <option value="all">All actions</option>
+              {actionTypes.map((action) => (
+                <option key={action} value={action}>
+                  {readableAction(action)}
+                </option>
+              ))}
+            </select>
+
+            <span className="audit-count">
+              {filteredAuditLogs.length} of {auditLogs.length} records
+            </span>
+          </div>
+
         </div>
 
         {auditLoading && <p>Loading audit records...</p>}
 
         {auditError && <p className="error">{auditError}</p>}
 
-        {!auditLoading && !auditError && auditLogs.length === 0 && (
-          <p>No audit records yet. Actions recorded through the API will appear here.</p>
+        {!auditLoading && !auditError && filteredAuditLogs.length === 0 && (
+        <p>
+          {auditLogs.length === 0
+            ? "No audit records yet. Actions recorded through the API will appear here."
+            : "No records match this action filter."}
+        </p>
         )}
 
         {!auditLoading && auditLogs.length > 0 && (
@@ -254,7 +288,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {auditLogs.map((log) => (
+                {filteredAuditLogs.map((log) => (
                   <tr key={log.id}>
                     <td>
                       <span className="audit-action">
