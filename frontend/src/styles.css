@@ -1,1 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');*{box-sizing:border-box}body{margin:0;background:#f5f8f7;color:#213538;font-family:'DM Sans',sans-serif}.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}aside{background:#112e2d;color:#dcebe5;padding:28px 18px;display:flex;flex-direction:column}.logo{font:800 19px Manrope,sans-serif;margin:0 0 42px;color:#c4f0db}.logo span{color:#fff}.navlabel{font-size:10px;letter-spacing:1.5px;color:#8faea5;padding-left:10px}.nav{padding:13px 11px;border-radius:8px;font-size:13px;color:#b7cec7}.nav.active{background:#254846;color:white}.asidebottom{margin-top:auto;border-top:1px solid #31514c;padding:20px 5px 0;font-size:11px;color:#9cc5b4}main{padding:38px clamp(20px,4vw,55px);max-width:1400px;width:100%;margin:auto}header{display:flex;justify-content:space-between;align-items:center;gap:18px}header small{font-size:10px;letter-spacing:1.7px;color:#568d7a;font-weight:700}h1{font:800 clamp(25px,3vw,34px) Manrope,sans-serif;letter-spacing:-1px;margin:8px 0}header p,.heading p{font-size:13px;color:#7b8989;margin:0}button{border:1px solid #dce5e3;background:white;border-radius:8px;padding:11px 14px;color:#314d49;font-weight:600;cursor:pointer;white-space:nowrap}.banner{margin:28px 0;background:#e6f4ec;border:1px solid #d5eadd;border-radius:10px;padding:17px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#2c694f;font-size:13px}.banner span{font-size:11px}.error{background:#ffefed;color:#a33a32;padding:12px;border-radius:8px;font-size:12px}.heading{display:flex;align-items:end;justify-content:space-between;margin:28px 0 14px;gap:10px}.heading h2{font:700 17px Manrope,sans-serif;margin:0 0 6px}.heading>span{font-size:10px;color:#568d7a;font-weight:700}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stats article,.project{background:white;border:1px solid #e4ebea;border-radius:11px;padding:17px}.stats p{font-size:11px;color:#7b8989;margin:0}.stats strong{display:block;font:800 clamp(17px,2vw,24px) Manrope,sans-serif;margin:17px 0 7px;white-space:nowrap}.stats small,.project small{font-size:10px;color:#879493}.projects{display:grid;gap:12px}.projecttop{display:flex;align-items:center;gap:11px}.avatar{height:39px;width:39px;display:grid;place-items:center;background:#e2f2e9;color:#347558;border-radius:10px;font:800 16px Manrope}.projecttop strong,.projecttop small{display:block}.projecttop strong{font-size:13px}.projecttop small{margin-top:4px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.metrics small,.metrics strong{display:block}.metrics small{margin-bottom:7px}.metrics strong{font-size:13px}.barlabel{display:flex;justify-content:space-between;font-size:10px;color:#7b8989;margin-bottom:7px}.barlabel strong{color:#39795e}.bar{height:6px;border-radius:8px;background:#edf1ef;overflow:hidden}.bar i{display:block;height:100%;background:#54ad84;border-radius:8px}.empty{text-align:center;padding:28px;border:1px dashed #cbd9d4;border-radius:10px;color:#74847f;font-size:12px}footer{display:flex;justify-content:space-between;gap:12px;margin-top:28px;color:#9aa5a2;font-size:10px}@media(max-width:900px){.app{grid-template-columns:180px 1fr}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.app{display:block}aside{padding:16px}.logo{margin:0}.navlabel,.nav,.asidebottom{display:none}main{padding:23px 14px}header{align-items:flex-start}header button{font-size:0;padding:10px}header button:after{content:'↻';font-size:18px}.stats{gap:8px}.stats article{padding:13px}.stats strong{font-size:19px}.metrics{grid-template-columns:repeat(2,1fr);row-gap:16px}footer{flex-direction:column}}
+
+.audit-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 900px;
+}
+
+.audit-table th {
+  padding: 14px 16px;
+  border-bottom: 1px solid #dbe3ea;
+}
+
+.audit-table td {
+  padding: 16px;
+  line-height: 1.6;
+  border-bottom: 1px solid #e8edf2;
+}
+
+.audit-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.audit-details {
+  min-width: 260px;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+
+.audit-table th:first-child,
+.audit-table td:first-child {
+  padding-left: 0;
+}
+
+.audit-table th:last-child,
+.audit-table td:last-child {
+  padding-right: 0;
+}

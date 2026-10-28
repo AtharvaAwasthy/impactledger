@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import "./styles.css";
 
@@ -11,6 +10,17 @@ type Project = {
   remaining_allocation_minor: number;
 };
 
+type AuditLog = {
+  id: number;
+  organization_id: number;
+  actor: string;
+  action: string;
+  entity_type: string;
+  entity_id: number;
+  details: string | null;
+  created_at: string;
+};
+
 const API = "http://127.0.0.1:8000";
 
 function money(amount: number) {
@@ -21,10 +31,70 @@ function money(amount: number) {
   }).format(amount / 100);
 }
 
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+
+function readableAction(action: string) {
+  return action.replace(/[._-]/g, " ");
+}
+
+
+function readableDetails(details: string | null) {
+  if (!details) return "—";
+
+  try {
+    const parsed: unknown = JSON.parse(details);
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return details;
+    }
+
+    return Object.entries(parsed as Record<string, unknown>)
+      .map(([key, value]) => {
+        const label = key
+          .replace(/[_-]/g, " ")
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+
+        const isAmount =
+          key.endsWith("_minor") && typeof value === "number";
+
+        const formattedValue = isAmount
+          ? money(value)
+          : value !== null && typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+
+        return `${label}: ${formattedValue}`;
+      })
+      .join(" · ");
+  } catch {
+    return details;
+  }
+}
+
+
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [error, setError] = useState("");
+  const [auditError, setAuditError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [auditLoading, setAuditLoading] = useState(true);
 
   async function loadProjects() {
     setLoading(true);
@@ -46,8 +116,34 @@ export default function App() {
     }
   }
 
+  async function loadAuditLogs() {
+    setAuditLoading(true);
+    setAuditError("");
+
+    try {
+      const response = await fetch(`${API}/audit-logs`);
+
+      if (!response.ok) {
+        throw new Error("Could not load audit logs");
+      }
+
+      const data: AuditLog[] = await response.json();
+      setAuditLogs(data);
+    } catch {
+      setAuditError(
+        "Could not load the audit trail. Check the backend and API configuration."
+      );
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  async function refreshDashboard() {
+    await Promise.all([loadProjects(), loadAuditLogs()]);
+  }
+
   useEffect(() => {
-    void loadProjects();
+    void refreshDashboard();
   }, []);
 
   const totals = {
@@ -68,7 +164,10 @@ export default function App() {
           <h1>ImpactLedger</h1>
           <p>Transparent funds. Accountable impact.</p>
         </div>
-        <button onClick={() => void loadProjects()}>Refresh</button>
+
+        <button onClick={() => void refreshDashboard()}>
+          Refresh dashboard
+        </button>
       </header>
 
       <section className="banner">
@@ -120,6 +219,67 @@ export default function App() {
             </p>
           </article>
         ))}
+      </section>
+
+      <section className="audit-section">
+        <div className="audit-heading">
+          <div>
+            <p className="eyebrow">ACCOUNTABILITY</p>
+            <h2>Audit Trail</h2>
+            <p>A chronological record of actions stored by the system.</p>
+          </div>
+          <span className="audit-count">
+            {auditLogs.length} records loaded
+          </span>
+        </div>
+
+        {auditLoading && <p>Loading audit records...</p>}
+
+        {auditError && <p className="error">{auditError}</p>}
+
+        {!auditLoading && !auditError && auditLogs.length === 0 && (
+          <p>No audit records yet. Actions recorded through the API will appear here.</p>
+        )}
+
+        {!auditLoading && auditLogs.length > 0 && (
+          <div className="audit-table-wrapper">
+            <table className="audit-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Record</th>
+                  <th>Details</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td>
+                      <span className="audit-action">
+                        {readableAction(log.action)}
+                      </span>
+                    </td>
+                    <td>{log.actor || "System"}</td>
+                    <td>
+                      <strong>{log.entity_type}</strong>
+                      <span className="audit-entity-id">
+                        ID: {log.entity_id}
+                      </span>
+                    </td>
+                    <td className="audit-details">
+                      {readableDetails(log.details)}
+                    </td>
+                    <td className="audit-timestamp">
+                      {formatDate(log.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <footer>ImpactLedger · Nonprofit fund transparency</footer>
