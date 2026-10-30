@@ -531,3 +531,90 @@ def test_concurrent_allocations_cannot_exceed_project_budget(client):
 
     assert project_data["allocated_minor"] == 300000
     assert project_data["unallocated_budget_minor"] == 200000
+
+
+
+def test_rejects_journal_account_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_account = client.post(
+        "/accounts",
+        json={
+            "organization_id": other_org["id"],
+            "code": "1000",
+            "name": "Other Bank",
+            "account_type": "asset",
+        },
+    ).json()
+
+    response = client.post(
+        "/journal-entries",
+        json={
+            "organization_id": org["id"],
+            "reference": "CROSS-ORG-ACCOUNT",
+            "description": "Cross organization account test",
+            "lines": [
+                {
+                    "account_id": other_account["id"],
+                    "debit_minor": 1000,
+                    "credit_minor": 0,
+                },
+                {
+                    "account_id": cash["id"],
+                    "debit_minor": 0,
+                    "credit_minor": 1000,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_rejects_journal_project_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_project = client.post(
+        "/projects",
+        json={
+            "organization_id": other_org["id"],
+            "name": "Other Project",
+            "description": "Different organization",
+            "budget_minor": 100000,
+        },
+    ).json()
+
+    response = client.post(
+        "/journal-entries",
+        json={
+            "organization_id": org["id"],
+            "reference": "CROSS-ORG-PROJECT",
+            "description": "Cross organization project test",
+            "lines": [
+                {
+                    "account_id": expense["id"],
+                    "debit_minor": 1000,
+                    "credit_minor": 0,
+                    "project_id": other_project["id"],
+                },
+                {
+                    "account_id": cash["id"],
+                    "debit_minor": 0,
+                    "credit_minor": 1000,
+                    "project_id": project["id"],
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 422

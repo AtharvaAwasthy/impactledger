@@ -255,11 +255,27 @@ def post_journal(payload: JournalIn, db: Session = Depends(get_db)):
 
         acct = db.get(Account, line.account_id)
 
-        if not acct or acct.organization_id != payload.organization_id or not acct.active:
-            raise HTTPException(422, f"Invalid account_id {line.account_id}")
+        if (
+            not acct
+            or acct.organization_id != payload.organization_id
+            or not acct.active
+        ):
+            raise HTTPException(
+                422,
+                f"Invalid account_id {line.account_id}"
+            )
 
-        if line.project_id and not db.get(Project, line.project_id):
-            raise HTTPException(422, "Invalid project_id")
+        if line.project_id is not None:
+            project = db.get(Project, line.project_id)
+
+            if (
+                not project
+                or project.organization_id != payload.organization_id
+            ):
+                raise HTTPException(
+                    422,
+                    f"Invalid project_id {line.project_id} for this organization"
+                )
 
     entry = JournalEntry(
         organization_id=payload.organization_id,
@@ -422,98 +438,6 @@ def allocate(payload: AllocationIn, db: Session = Depends(get_db)):
         "amount_minor": obj.amount_minor,
         "note": obj.note
     }
-
-def allocate(payload: AllocationIn, db: Session = Depends(get_db)):
-    # Acquire write locks before checking balances and project budget.
-    db.execute(
-        update(Project)
-        .where(Project.id == payload.project_id)
-        .values(id=Project.id)
-    )
-    db.execute(
-        update(Account)
-        .where(Account.id == payload.source_account_id)
-        .values(id=Account.id)
-    )
-
-    project = db.get(Project, payload.project_id)
-    acct = db.get(Account, payload.source_account_id)
-
-    if not project or project.organization_id != payload.organization_id:
-        raise HTTPException(404, "Project not found in organization")
-
-    if (
-        not acct
-        or acct.organization_id != payload.organization_id
-        or acct.account_type != "asset"
-    ):
-        raise HTTPException(
-            422,
-            "Source must be an asset account in this organization"
-        )
-
-    # Enforce the project's total allocation limit.
-    allocated = db.scalar(
-        select(func.coalesce(func.sum(Allocation.amount_minor), 0)).where(
-            Allocation.project_id == project.id
-        )
-    ) or 0
-
-    if payload.amount_minor > project.budget_minor - int(allocated):
-        raise HTTPException(
-            422,
-            "Allocation exceeds the project's remaining budget"
-        )
-
-    # Ensure the source account has enough unallocated cash.
-    cash_available = balance(db, acct)
-
-    reserved = db.scalar(
-        select(func.coalesce(func.sum(Allocation.amount_minor), 0)).where(
-            Allocation.source_account_id == acct.id
-        )
-    ) or 0
-
-    if payload.amount_minor > cash_available - int(reserved):
-        raise HTTPException(
-            422,
-            "Allocation exceeds available unallocated cash"
-        )
-
-    obj = Allocation(
-        organization_id=payload.organization_id,
-        project_id=project.id,
-        source_account_id=acct.id,
-        amount_minor=payload.amount_minor,
-        note=payload.note
-    )
-
-    db.add(obj)
-    db.flush()
-
-    audit(
-        db,
-        payload.organization_id,
-        "funds.allocated",
-        "allocation",
-        obj.id,
-        {
-            "project_id": project.id,
-            "amount_minor": payload.amount_minor,
-            "source_account_id": acct.id
-        }
-    )
-
-    db.commit()
-    db.refresh(obj)
-
-    return {
-        "id": obj.id,
-        "project_id": obj.project_id,
-        "amount_minor": obj.amount_minor,
-        "note": obj.note
-    }
-
 @app.post("/expenditures", status_code=201)
 def spend(
     payload: ExpenditureIn,
