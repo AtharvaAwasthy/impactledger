@@ -70,19 +70,46 @@ class Allocation(Base):
     note: Mapped[str] = mapped_column(String(250), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
+
 class Expenditure(Base):
     __tablename__ = "expenditures"
-    __table_args__ = (CheckConstraint("amount_minor > 0"),)
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0"),
+        UniqueConstraint(
+            "organization_id",
+            "idempotency_key",
+            name="uq_expenditure_org_idempotency"
+        ),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
-    expense_account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
-    cash_account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False
+    )
+    expense_account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id"), nullable=False
+    )
+    cash_account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id"), nullable=False
+    )
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False)
-    vendor_reference: Mapped[str] = mapped_column(String(120), default="", nullable=False)
-    journal_entry_id: Mapped[int] = mapped_column(ForeignKey("journal_entries.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    vendor_reference: Mapped[str] = mapped_column(
+        String(120), default="", nullable=False
+    )
+    journal_entry_id: Mapped[int] = mapped_column(
+        ForeignKey("journal_entries.id"), nullable=False
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
