@@ -618,3 +618,171 @@ def test_rejects_journal_project_from_another_organization(client):
     )
 
     assert response.status_code == 422
+
+
+def test_rejects_allocation_to_project_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_project = client.post(
+        "/projects",
+        json={
+            "organization_id": other_org["id"],
+            "name": "Other Project",
+            "description": "Different organization",
+            "budget_minor": 100000,
+        },
+    ).json()
+
+    response = client.post(
+        "/allocations",
+        json={
+            "organization_id": org["id"],
+            "project_id": other_project["id"],
+            "source_account_id": cash["id"],
+            "amount_minor": 10000,
+            "note": "Cross organization allocation",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_rejects_allocation_from_account_in_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_account = client.post(
+        "/accounts",
+        json={
+            "organization_id": other_org["id"],
+            "code": "1000",
+            "name": "Other Bank",
+            "account_type": "asset",
+        },
+    ).json()
+
+    response = client.post(
+        "/allocations",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "source_account_id": other_account["id"],
+            "amount_minor": 10000,
+            "note": "Cross organization account allocation",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_rejects_expenditure_for_project_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_project = client.post(
+        "/projects",
+        json={
+            "organization_id": other_org["id"],
+            "name": "Other Project",
+            "description": "Different organization",
+            "budget_minor": 100000,
+        },
+    ).json()
+
+    response = client.post(
+        "/expenditures",
+        json={
+            "organization_id": org["id"],
+            "project_id": other_project["id"],
+            "expense_account_id": expense["id"],
+            "cash_account_id": cash["id"],
+            "amount_minor": 1000,
+            "category": "Supplies",
+            "vendor_reference": "TEST-001",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_rejects_expenditure_with_expense_account_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_expense = client.post(
+        "/accounts",
+        json={
+            "organization_id": other_org["id"],
+            "code": "5000",
+            "name": "Other Expenses",
+            "account_type": "expense",
+            "restricted": False,
+        },
+    ).json()
+
+    response = client.post(
+        "/expenditures",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "expense_account_id": other_expense["id"],
+            "cash_account_id": cash["id"],
+            "amount_minor": 1000,
+            "category": "Supplies",
+            "vendor_reference": "TEST-002",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_rejects_expenditure_with_cash_account_from_another_organization(client):
+    org, project, cash, expense = setup(client)
+
+    other_org = client.post(
+        "/organizations",
+        json={"name": "Other NGO"},
+    ).json()
+
+    other_cash = client.post(
+        "/accounts",
+        json={
+            "organization_id": other_org["id"],
+            "code": "1000",
+            "name": "Other Bank",
+            "account_type": "asset",
+            "restricted": False,
+        },
+    ).json()
+
+    response = client.post(
+        "/expenditures",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "expense_account_id": expense["id"],
+            "cash_account_id": other_cash["id"],
+            "amount_minor": 1000,
+            "category": "Supplies",
+            "vendor_reference": "TEST-003",
+        },
+    )
+
+    assert response.status_code == 422
