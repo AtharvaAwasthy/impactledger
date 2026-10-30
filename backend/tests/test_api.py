@@ -439,3 +439,95 @@ def test_concurrent_expenditures_cannot_overspend_allocation(client):
 
     assert project_data["spent_minor"] == 70000
     assert project_data["remaining_allocation_minor"] == 30000
+
+
+def test_rejects_allocation_exceeding_project_budget(client):
+    org, project, cash, expense = setup(client)
+
+    # Project budget is 500,000 minor units.
+    first = client.post(
+        "/allocations",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "source_account_id": cash["id"],
+            "amount_minor": 400000,
+            "note": "First allocation",
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    # Only 100,000 remains in the project budget.
+    second = client.post(
+        "/allocations",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "source_account_id": cash["id"],
+            "amount_minor": 200000,
+            "note": "Exceeds remaining budget",
+        },
+    )
+
+    assert second.status_code == 422
+    assert second.json()["detail"] == (
+        "Allocation exceeds remaining project budget"
+    )
+
+    transparency = client.get("/transparency/projects")
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
+    )
+
+    assert project_data["allocated_minor"] == 400000
+
+
+def test_concurrent_allocations_cannot_exceed_project_budget(client):
+    import app.main as main
+
+    org, project, cash, expense = setup(client)
+
+    barrier = Barrier(2)
+
+    def make_allocation(reference):
+        payload = {
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "source_account_id": cash["id"],
+            "amount_minor": 300000,
+            "note": reference,
+        }
+
+        with TestClient(main.app) as worker_client:
+            barrier.wait(timeout=10)
+            return worker_client.post(
+                "/allocations",
+                json=payload,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(make_allocation, "CONCURRENT-ALLOC-1"),
+            executor.submit(make_allocation, "CONCURRENT-ALLOC-2"),
+        ]
+
+        responses = [future.result(timeout=30) for future in futures]
+
+    statuses = sorted(response.status_code for response in responses)
+
+    assert statuses == [201, 422], [
+        (response.status_code, response.text)
+        for response in responses
+    ]
+
+    transparency = client.get("/transparency/projects")
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
+    )
+
+    assert project_data["allocated_minor"] == 300000
+    assert project_data["unallocated_budget_minor"] == 200000
