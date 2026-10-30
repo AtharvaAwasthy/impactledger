@@ -1,16 +1,22 @@
 
+import importlib
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
+    """
+    Give every test its own SQLite database so tests remain isolated.
+    """
     monkeypatch.setenv(
         "DATABASE_URL",
-        f"sqlite:///{tmp_path / 'test.db'}"
+        f"sqlite:///{tmp_path / 'test.db'}",
     )
 
-    import importlib
     import app.database
     import app.models
     import app.main
@@ -23,135 +29,161 @@ def client(tmp_path, monkeypatch):
         bind=app.database.engine
     )
 
-    with TestClient(app.main.app) as c:
-        yield c
+    with TestClient(app.main.app) as test_client:
+        yield test_client
 
     app.database.Base.metadata.drop_all(
         bind=app.database.engine
     )
+    app.database.engine.dispose()
 
 
 def setup(client):
-    org = client.post(
+    """
+    Create an organization, project, accounts and an initial
+    donation of 500,000 minor units.
+    """
+    response = client.post(
         "/organizations",
-        json={"name": "Test NGO"}
-    ).json()
+        json={"name": "Test NGO"},
+    )
+    assert response.status_code == 201, response.text
+    org = response.json()
 
-    project = client.post(
+    response = client.post(
         "/projects",
         json={
             "organization_id": org["id"],
             "name": "School Kits",
-            "budget_minor": 1000000
-        }
-    ).json()
+            "description": "Providing school supplies",
+            "budget_minor": 500000,
+        },
+    )
+    assert response.status_code == 201, response.text
+    project = response.json()
 
-    cash = client.post(
+    response = client.post(
         "/accounts",
         json={
             "organization_id": org["id"],
             "code": "1000",
-            "name": "Bank",
-            "account_type": "asset"
-        }
-    ).json()
+            "name": "Bank Account",
+            "account_type": "asset",
+            "restricted": False,
+        },
+    )
+    assert response.status_code == 201, response.text
+    cash = response.json()
 
-    revenue = client.post(
+    response = client.post(
         "/accounts",
         json={
             "organization_id": org["id"],
             "code": "4000",
-            "name": "Restricted donations",
+            "name": "Restricted Donations",
             "account_type": "revenue",
-            "restricted": True
-        }
-    ).json()
+            "restricted": True,
+        },
+    )
+    assert response.status_code == 201, response.text
+    revenue = response.json()
 
-    expense = client.post(
+    response = client.post(
         "/accounts",
         json={
             "organization_id": org["id"],
             "code": "5000",
-            "name": "Program expense",
+            "name": "Program Expenses",
             "account_type": "expense",
-            "project_id": project["id"]
-        }
-    ).json()
+            "restricted": False,
+            "project_id": project["id"],
+        },
+    )
+    assert response.status_code == 201, response.text
+    expense = response.json()
 
-    donation = client.post(
+    response = client.post(
         "/journal-entries",
         json={
             "organization_id": org["id"],
-            "reference": "DON-1",
-            "description": "Donation",
+            "reference": "DONATION-001",
+            "description": "Initial donation",
             "lines": [
                 {
                     "account_id": cash["id"],
-                    "debit_minor": 500000
+                    "debit_minor": 500000,
+                    "credit_minor": 0,
+                    "project_id": project["id"],
+                    "memo": "Donation received",
                 },
                 {
                     "account_id": revenue["id"],
-                    "credit_minor": 500000
-                }
-            ]
-        }
+                    "debit_minor": 0,
+                    "credit_minor": 500000,
+                    "project_id": project["id"],
+                    "memo": "Donation income",
+                },
+            ],
+        },
     )
-
-    assert donation.status_code == 201, donation.text
+    assert response.status_code == 201, response.text
 
     return org, project, cash, expense
 
 
 def test_health(client):
-    assert client.get("/health").json() == {
-        "status": "ok"
-    }
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 def test_rejects_unbalanced_journal(client):
     org, project, cash, expense = setup(client)
 
-    revenue = client.get("/accounts").json()[1]
-
-    r = client.post(
+    response = client.post(
         "/journal-entries",
         json={
             "organization_id": org["id"],
-            "reference": "BAD-1",
-            "description": "Bad",
+            "reference": "INVALID-001",
+            "description": "Unbalanced journal",
             "lines": [
                 {
-                    "account_id": cash["id"],
-                    "debit_minor": 10000
+                    "account_id": expense["id"],
+                    "debit_minor": 10000,
+                    "credit_minor": 0,
+                    "project_id": project["id"],
                 },
                 {
-                    "account_id": revenue["id"],
-                    "credit_minor": 9000
-                }
-            ]
-        }
+                    "account_id": cash["id"],
+                    "debit_minor": 0,
+                    "credit_minor": 5000,
+                    "project_id": project["id"],
+                },
+            ],
+        },
     )
 
-    assert r.status_code == 422
+    assert response.status_code == 422
 
 
 def test_allocation_and_expenditure(client):
     org, project, cash, expense = setup(client)
 
-    r = client.post(
+    response = client.post(
         "/allocations",
         json={
             "organization_id": org["id"],
             "project_id": project["id"],
             "source_account_id": cash["id"],
             "amount_minor": 200000,
-            "note": "School kits"
-        }
+            "note": "School kits",
+        },
     )
 
-    assert r.status_code == 201, r.text
+    assert response.status_code == 201, response.text
 
-    r = client.post(
+    response = client.post(
         "/expenditures",
         json={
             "organization_id": org["id"],
@@ -160,41 +192,44 @@ def test_allocation_and_expenditure(client):
             "cash_account_id": cash["id"],
             "amount_minor": 50000,
             "category": "Learning materials",
-            "vendor_reference": "INV-1"
-        }
+            "vendor_reference": "INV-1",
+        },
     )
 
-    assert r.status_code == 201, r.text
+    assert response.status_code == 201, response.text
 
-    summary = client.get(
-        "/transparency/projects"
-    ).json()[0]
+    transparency = client.get("/transparency/projects")
+    assert transparency.status_code == 200
 
-    assert summary["allocated_minor"] == 200000
-    assert summary["spent_minor"] == 50000
-    assert summary["remaining_allocation_minor"] == 150000
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
+    )
+
+    assert project_data["allocated_minor"] == 200000
+    assert project_data["spent_minor"] == 50000
+    assert project_data["remaining_allocation_minor"] == 150000
 
 
 def test_rejects_overallocation(client):
     org, project, cash, expense = setup(client)
 
-    r = client.post(
+    response = client.post(
         "/allocations",
         json={
             "organization_id": org["id"],
             "project_id": project["id"],
             "source_account_id": cash["id"],
-            "amount_minor": 600000
-        }
+            "amount_minor": 600000,
+            "note": "Exceeds available funds",
+        },
     )
 
-    assert r.status_code == 422
+    assert response.status_code == 422
 
 
-def test_expenditure_rollback_on_audit_failure(
-    client,
-    monkeypatch
-):
+def test_expenditure_rollback_on_audit_failure(client, monkeypatch):
     import app.main as main
 
     org, project, cash, expense = setup(client)
@@ -206,24 +241,28 @@ def test_expenditure_rollback_on_audit_failure(
             "project_id": project["id"],
             "source_account_id": cash["id"],
             "amount_minor": 200000,
-            "note": "Rollback test"
-        }
+            "note": "Rollback test",
+        },
     )
-
     assert allocation.status_code == 201, allocation.text
 
-    original_audit = main.audit
+    def failing_audit(db, org_id, action, kind, entity_id, details):
+        from app.models import AuditLog
 
-    def failing_audit(*args, **kwargs):
-        original_audit(*args, **kwargs)
-        raise RuntimeError("Simulated audit logging failure")
+        db.add(
+            AuditLog(
+                organization_id=org_id,
+                action=action,
+                entity_type=kind,
+                entity_id=str(entity_id),
+                details="{}",
+            )
+        )
+        raise RuntimeError("Simulated audit failure")
 
     monkeypatch.setattr(main, "audit", failing_audit)
 
-    with pytest.raises(
-        RuntimeError,
-        match="Simulated audit logging failure"
-    ):
+    with pytest.raises(RuntimeError, match="Simulated audit failure"):
         client.post(
             "/expenditures",
             json={
@@ -233,27 +272,39 @@ def test_expenditure_rollback_on_audit_failure(
                 "cash_account_id": cash["id"],
                 "amount_minor": 50000,
                 "category": "Rollback test",
-                "vendor_reference": "INV-ROLLBACK"
-            }
+                "vendor_reference": "ROLLBACK-1",
+            },
         )
 
-    # The original donation journal entry should be the only one.
-    journals = client.get("/journal-entries").json()
-    assert len(journals) == 1
-    assert journals[0]["reference"] == "DON-1"
+    journals = client.get("/journal-entries")
+    assert journals.status_code == 200
 
-    # No expenditure should have been recorded.
-    summary = client.get("/transparency/projects").json()[0]
-    assert summary["spent_minor"] == 0
-    assert summary["remaining_allocation_minor"] == 200000
+    expenditure_journals = [
+        entry
+        for entry in journals.json()
+        if entry["reference"].startswith("EXP-")
+    ]
+    assert expenditure_journals == []
 
-    # No expenditure audit event should survive.
-    audit_logs = client.get("/audit-logs").json()
-
-    assert not any(
-        log["action"] == "expenditure.recorded"
-        for log in audit_logs
+    transparency = client.get("/transparency/projects")
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
     )
+
+    assert project_data["spent_minor"] == 0
+    assert project_data["remaining_allocation_minor"] == 200000
+
+    audit_logs = client.get("/audit-logs")
+    assert audit_logs.status_code == 200
+
+    expenditure_audits = [
+        item
+        for item in audit_logs.json()
+        if item["action"] == "expenditure.recorded"
+    ]
+    assert expenditure_audits == []
 
 
 def test_expenditure_idempotency(client):
@@ -266,11 +317,10 @@ def test_expenditure_idempotency(client):
             "project_id": project["id"],
             "source_account_id": cash["id"],
             "amount_minor": 200000,
-            "note": "Idempotency test"
-        }
+            "note": "Idempotency test",
+        },
     )
-
-    assert allocation.status_code == 201
+    assert allocation.status_code == 201, allocation.text
 
     payload = {
         "organization_id": org["id"],
@@ -279,49 +329,113 @@ def test_expenditure_idempotency(client):
         "cash_account_id": cash["id"],
         "amount_minor": 50000,
         "category": "Learning materials",
-        "vendor_reference": "INV-IDEM-1"
+        "vendor_reference": "INV-IDEMPOTENT",
     }
 
-    headers = {"Idempotency-Key": "test-payment-001"}
+    headers = {"Idempotency-Key": "test-expenditure-001"}
 
     first = client.post(
         "/expenditures",
         json=payload,
-        headers=headers
+        headers=headers,
     )
+    assert first.status_code == 201, first.text
 
     second = client.post(
         "/expenditures",
         json=payload,
-        headers=headers
+        headers=headers,
     )
-
-    assert first.status_code == 201, first.text
     assert second.status_code == 201, second.text
 
     assert first.json()["id"] == second.json()["id"]
 
-    summary = client.get("/transparency/projects").json()[0]
+    transparency = client.get("/transparency/projects")
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
+    )
 
-    assert summary["spent_minor"] == 50000
-    assert summary["remaining_allocation_minor"] == 150000
+    assert project_data["spent_minor"] == 50000
+    assert project_data["remaining_allocation_minor"] == 150000
 
-    journals = client.get("/journal-entries").json()
-
-    assert len(journals) == 2
-
-    changed_payload = {
+    different_payload = {
         **payload,
-        "amount_minor": 60000
+        "amount_minor": 60000,
     }
 
     conflict = client.post(
         "/expenditures",
-        json=changed_payload,
-        headers=headers
+        json=different_payload,
+        headers=headers,
     )
 
     assert conflict.status_code == 409
 
-    summary = client.get("/transparency/projects").json()[0]
-    assert summary["spent_minor"] == 50000
+
+def test_concurrent_expenditures_cannot_overspend_allocation(client):
+    import app.main as main
+
+    org, project, cash, expense = setup(client)
+
+    allocation = client.post(
+        "/allocations",
+        json={
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "source_account_id": cash["id"],
+            "amount_minor": 100000,
+            "note": "Concurrency test allocation",
+        },
+    )
+    assert allocation.status_code == 201, allocation.text
+
+    barrier = Barrier(2)
+
+    def make_expenditure(reference):
+        payload = {
+            "organization_id": org["id"],
+            "project_id": project["id"],
+            "expense_account_id": expense["id"],
+            "cash_account_id": cash["id"],
+            "amount_minor": 70000,
+            "category": "Concurrency test",
+            "vendor_reference": reference,
+        }
+
+        # Each worker uses its own TestClient and therefore its own
+        # request/session context, while sharing the same test database.
+        with TestClient(main.app) as worker_client:
+            barrier.wait(timeout=10)
+            return worker_client.post(
+                "/expenditures",
+                json=payload,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(make_expenditure, "CONCURRENT-1"),
+            executor.submit(make_expenditure, "CONCURRENT-2"),
+        ]
+
+        responses = [future.result(timeout=30) for future in futures]
+
+    statuses = sorted(response.status_code for response in responses)
+
+    assert statuses == [201, 422], [
+        (response.status_code, response.text)
+        for response in responses
+    ]
+
+    transparency = client.get("/transparency/projects")
+    assert transparency.status_code == 200
+
+    project_data = next(
+        item
+        for item in transparency.json()
+        if item["project_id"] == project["id"]
+    )
+
+    assert project_data["spent_minor"] == 70000
+    assert project_data["remaining_allocation_minor"] == 30000

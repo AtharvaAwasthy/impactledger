@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 from app.database import Base, engine, get_db
 from app.models import (
@@ -331,10 +331,21 @@ def journals(db: Session = Depends(get_db)):
         for e in entries
     ]
 
-
 @app.post("/allocations", status_code=201)
 def allocate(payload: AllocationIn, db: Session = Depends(get_db)):
+        # Acquire write locks before checking available funds.
+    db.execute(
+        update(Project)
+        .where(Project.id == payload.project_id)
+        .values(id=Project.id)
+    )
+    db.execute(
+        update(Account)
+        .where(Account.id == payload.source_account_id)
+        .values(id=Account.id)
+    )
     project = db.get(Project, payload.project_id)
+
     acct = db.get(Account, payload.source_account_id)
 
     if not project or project.organization_id != payload.organization_id:
@@ -400,6 +411,17 @@ def spend(
         alias="Idempotency-Key"
     )
 ):
+        # Acquire write locks before checking allocation and cash balances.
+    db.execute(
+        update(Project)
+        .where(Project.id == payload.project_id)
+        .values(id=Project.id)
+    )
+    db.execute(
+        update(Account)
+        .where(Account.id == payload.cash_account_id)
+        .values(id=Account.id)
+    )
     if idempotency_key is not None:
         idempotency_key = idempotency_key.strip()
 
